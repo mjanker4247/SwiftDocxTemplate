@@ -66,55 +66,81 @@ struct DocumentPipeline {
         var fullTextSnippet: String
     }
 
+    /// Locates the first open-block in document order.
+    ///
+    /// Search is scoped to each table row (for `{%tr …%}`) or paragraph so tag-width
+    /// approximations cannot drift across a full document of filtered variables.
     private func findFirstOpenBlock(in root: AEXMLElement) -> BlockMatch? {
+        var found: BlockMatch?
+        func walk(_ el: AEXMLElement) {
+            guard found == nil else { return }
+            if DOMScopeResolver.isWord(el, "tr") {
+                found = findOpenBlock(inSubtree: el)
+                return
+            }
+            if DOMScopeResolver.isWord(el, "p") {
+                found = findOpenBlock(inSubtree: el)
+                return
+            }
+            for child in el.children {
+                walk(child)
+                if found != nil { return }
+            }
+        }
+        walk(root)
+        return found
+    }
+
+    private func findOpenBlock(inSubtree root: AEXMLElement) -> BlockMatch? {
         let texts = collectTextRuns(in: root)
+        guard !texts.isEmpty else { return nil }
         let joined = texts.map(\.text).joined()
+        guard joined.contains("{%") || joined.contains("{#") || joined.contains("{^") else {
+            return nil
+        }
         guard let tokens = try? TemplateLexer(joined).tokenize() else { return nil }
 
-        // Map character offsets back to runs.
         var openToken: OpenBlock?
-        var openOffset: Int?
-        var closeOffset: Int?
         var closeTag: String?
         var depth = 0
-        var cursor = 0
 
         for token in tokens {
             switch token {
-            case .literal(let s):
-                cursor += s.count
-            case .variable(let e, let f):
-                // Approximate token width from reconstruction
-                let width = reconstructedVariableWidth(e, f)
-                cursor += width
+            case .literal, .variable, .elseBlock:
+                continue
             case .openBlock(let open):
                 if openToken == nil {
                     openToken = open
-                    openOffset = cursor
                 }
                 depth += 1
-                cursor += reconstructedOpenWidth(open)
-            case .elseBlock:
-                cursor += 10 // "{% else %}" approx — only used for depth tracking in joined scan
             case .closeBlock(let tag):
                 depth -= 1
-                if depth == 0, openToken != nil, closeOffset == nil {
-                    closeOffset = cursor
+                if depth == 0, openToken != nil, closeTag == nil {
                     closeTag = tag
+                    break
                 }
-                cursor += reconstructedCloseWidth(tag)
             }
-            if openToken != nil, closeOffset != nil { break }
         }
 
-        guard let open = openToken, let start = openOffset else { return nil }
+        guard let open = openToken else { return nil }
 
-        guard let openTextRun = runAt(characterOffset: start, in: texts) ?? texts.first else {
+        // Resolve the open run by content match — avoids fragile reconstructed widths.
+        let openNeedle = openTagNeedle(open)
+        guard let openTextRun = texts.first(where: { $0.text.contains(openNeedle) })
+                ?? texts.first(where: {
+                    (try? TemplateLexer($0.text).tokenize())?.contains(where: {
+                        if case .openBlock(let o) = $0 { return o == open }
+                        return false
+                    }) == true
+                })
+                ?? texts.first else {
             return nil
         }
+
         let closeRun: AEXMLElement?
-        if let closeOffset {
-            closeRun = runAt(characterOffset: closeOffset, in: texts)?.run
+        if let closeTag {
+            let closeNeedle = closeTagNeedle(closeTag)
+            closeRun = texts.first(where: { $0.text.contains(closeNeedle) })?.run
         } else {
             closeRun = nil
         }
@@ -128,6 +154,25 @@ struct DocumentPipeline {
             host: host,
             fullTextSnippet: joined
         )
+    }
+
+    private func openTagNeedle(_ open: OpenBlock) -> String {
+        switch open.kind {
+        case .unless:
+            return "{^\(open.raw)}"
+        case .for(_, let collection) where open.scope == .auto && open.raw == collection:
+            return "{#\(open.raw)}"
+        default:
+            // Percent tags store `raw` including the scope prefix (`p if …`, `tr for …`).
+            return "{%\(open.raw)"
+        }
+    }
+
+    private func closeTagNeedle(_ tag: String) -> String {
+        if tag.hasPrefix("end") {
+            return "{% \(tag)"
+        }
+        return "{/\(tag)}"
     }
 
     private mutating func evaluateMatchedBlock(_ match: BlockMatch) throws {
@@ -327,21 +372,6 @@ struct DocumentPipeline {
         }
     }
 
-    private func runAt(characterOffset: Int, in runs: [TextRun]) -> TextRun? {
-        var cursor = 0
-        for run in runs {
-            let end = cursor + run.text.count
-            if characterOffset < end || (characterOffset == cursor && run.text.isEmpty == false) {
-                return run
-            }
-            if characterOffset == cursor {
-                return run
-            }
-            cursor = end
-        }
-        return runs.last
-    }
-
     private func setText(on run: AEXMLElement, _ text: String) {
         let textNodes = run.children.filter { DOMScopeResolver.isWord($0, "t") }
         if let first = textNodes.first {
@@ -357,45 +387,6 @@ struct DocumentPipeline {
             let t = run.addChild(name: name, value: text)
             t.attributes["xml:space"] = "preserve"
         }
-    }
-
-    private func reconstructedVariableWidth(_ expr: String, _ filters: [FilterCall]) -> Int {
-        var s = "{{ \(expr)"
-        for f in filters {
-            s += " | \(f.name)"
-            if !f.arguments.isEmpty {
-                s += "(\(f.arguments.joined(separator: ",")))"
-            }
-        }
-        s += " }}"
-        return s.count
-    }
-
-    private func reconstructedOpenWidth(_ open: OpenBlock) -> Int {
-        switch open.scope {
-        case .auto:
-            // docxtemplater style
-            switch open.kind {
-            case .for(_, let c) where open.raw == c || open.raw.isEmpty:
-                return "{#\(open.raw)}".count
-            case .unless:
-                return "{^\(open.raw)}".count
-            default:
-                return "{% \(open.raw) %}".count
-            }
-        default:
-            return "{%\(open.scope.rawValue) \(open.raw) %}".count
-        }
-    }
-
-    private func reconstructedCloseWidth(_ tag: String?) -> Int {
-        if let tag, !tag.isEmpty {
-            if tag.hasPrefix("end") {
-                return "{% \(tag) %}".count
-            }
-            return "{/\(tag)}".count
-        }
-        return "{% end %}".count
     }
 }
 
