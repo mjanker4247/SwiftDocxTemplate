@@ -16,6 +16,14 @@ Then depend on the `SwiftDocxTemplate` product.
 
 ## Quick start
 
+For a full runnable sample (template + every working tag), see [`Examples/Quickstart`](Examples/Quickstart) and run:
+
+```bash
+swift run QuickstartExample
+```
+
+Minimal API usage:
+
 ```swift
 import SwiftDocxTemplate
 

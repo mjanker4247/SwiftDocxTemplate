@@ -23,8 +23,9 @@ public struct TemplateValueEncoder: Sendable {
         if let image = value as? InlineImage {
             return .image(image)
         }
-        if let runs = value as? [RichTextRun] {
-            return .richText(runs)
+        // Empty arrays cast to any `[T]` in Swift — require the exact `[RichTextRun]` type.
+        if type(of: value) == [RichTextRun].self {
+            return .richText(value as! [RichTextRun])
         }
         if let date = value as? Date {
             return .date(date)
@@ -589,7 +590,10 @@ private struct _StringKey: CodingKey {
 private func encodeAny<T: Encodable>(_ value: T, codingPath: [CodingKey]) throws -> TemplateValue {
     if let tv = value as? TemplateValue { return tv }
     if let image = value as? InlineImage { return .image(image) }
-    if let runs = value as? [RichTextRun] { return .richText(runs) }
+    // Empty arrays cast to any `[T]` in Swift — require the exact `[RichTextRun]` type.
+    if type(of: value) == [RichTextRun].self {
+        return .richText(value as! [RichTextRun])
+    }
     if let date = value as? Date { return .date(date) }
     if let url = value as? URL { return .string(url.absoluteString) }
 
