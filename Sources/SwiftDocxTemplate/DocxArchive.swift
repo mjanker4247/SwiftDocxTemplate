@@ -6,7 +6,10 @@ public struct DocxArchive: Sendable {
     public private(set) var entries: [String: Data]
 
     public init(data: Data) throws {
-        guard let archive = Archive(data: data, accessMode: .read) else {
+        let archive: Archive
+        do {
+            archive = try Archive(data: data, accessMode: .read)
+        } catch {
             throw DocxTemplateError.invalidArchive
         }
         var map: [String: Data] = [:]
@@ -76,8 +79,11 @@ public struct DocxArchive: Sendable {
             .appendingPathComponent("SwiftDocxTemplate-\(UUID().uuidString).docx")
         defer { try? FileManager.default.removeItem(at: tmp) }
 
-        guard let archive = Archive(url: tmp, accessMode: .create) else {
-            throw DocxTemplateError.ioError("Failed to create temporary ZIP archive.")
+        let archive: Archive
+        do {
+            archive = try Archive(url: tmp, accessMode: .create)
+        } catch {
+            throw DocxTemplateError.ioError("Failed to create temporary ZIP archive: \(error)")
         }
 
         for path in entries.keys.sorted() {
