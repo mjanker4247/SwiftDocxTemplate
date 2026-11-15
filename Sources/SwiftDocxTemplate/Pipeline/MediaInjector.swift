@@ -194,7 +194,7 @@ struct MediaInjector {
 
     private mutating func appendRelationship(relId: String, target: String) throws {
         let relsPath = "word/_rels/document.xml.rels"
-        var relsData = archive.data(at: relsPath) ?? Data("""
+        let relsData = archive.data(at: relsPath) ?? Data("""
         <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
         <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
         </Relationships>
