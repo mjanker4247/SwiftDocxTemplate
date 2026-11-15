@@ -4,15 +4,46 @@ Swift library for rendering Microsoft Word `.docx` templates with docxtpl / docx
 
 **Requirements:** Swift 5.9+, iOS 16+ / macOS 13+
 
-## Install
+**License:** MIT ([LICENSE](LICENSE))
 
-Add the package in `Package.swift`:
+## Installation
+
+Add this repository as a Swift Package Manager dependency. The package exposes one library product: **`SwiftDocxTemplate`**.
+
+Repository URL: `https://github.com/mjanker4247/SwiftDocxTemplate.git`
+
+### Xcode
+
+1. **File → Add Package Dependencies…**
+2. Paste `https://github.com/mjanker4247/SwiftDocxTemplate.git`
+3. Choose **Up to Next Major Version** from `1.0.0` (or another released tag)
+4. Add the **`SwiftDocxTemplate`** library product to your app/framework target
+
+### `Package.swift`
 
 ```swift
-.package(url: "https://github.com/mjanker4247/SwiftDocxTemplate.git", from: "1.0.0")
+dependencies: [
+    .package(url: "https://github.com/mjanker4247/SwiftDocxTemplate.git", from: "1.0.0"),
+],
+targets: [
+    .target(
+        name: "YourTarget",
+        dependencies: [
+            .product(name: "SwiftDocxTemplate", package: "SwiftDocxTemplate"),
+        ]
+    ),
+]
 ```
 
-Then depend on the `SwiftDocxTemplate` product.
+Then:
+
+```swift
+import SwiftDocxTemplate
+```
+
+### Versioning
+
+Use semantic version tags on `main` (annotated tags such as `1.0.0`). Consumers should pin with `from: "x.y.z"` (or Xcode’s “Up to Next Major”). Until a `1.0.0` tag exists on GitHub, Xcode/`from:` resolution will not find a release — create and push that tag after this package config lands on `main`.
 
 ## Quick start
 

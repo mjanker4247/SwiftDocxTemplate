@@ -8,13 +8,10 @@ let package = Package(
         .macOS(.v13),
     ],
     products: [
+        // Single public library product for SPM / Xcode consumers.
         .library(
             name: "SwiftDocxTemplate",
             targets: ["SwiftDocxTemplate"]
-        ),
-        .executable(
-            name: "QuickstartExample",
-            targets: ["QuickstartExample"]
         ),
     ],
     dependencies: [
@@ -29,6 +26,9 @@ let package = Package(
                 "AEXML",
             ]
         ),
+        // Local sample only — not a package product, so it does not appear in
+        // "Add Package Dependencies…" product pickers. Run with:
+        //   swift run QuickstartExample
         .executableTarget(
             name: "QuickstartExample",
             dependencies: [
