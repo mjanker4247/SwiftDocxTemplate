@@ -73,17 +73,13 @@ public struct DocxArchive: Sendable {
             .sorted()
     }
 
-    /// Serializes the archive back into DOCX (ZIP) bytes.
+    /// Serializes the archive back into DOCX (ZIP) bytes (fully in memory).
     public func serialize() throws -> Data {
-        let tmp = FileManager.default.temporaryDirectory
-            .appendingPathComponent("SwiftDocxTemplate-\(UUID().uuidString).docx")
-        defer { try? FileManager.default.removeItem(at: tmp) }
-
         let archive: Archive
         do {
-            archive = try Archive(url: tmp, accessMode: .create)
+            archive = try Archive(accessMode: .create)
         } catch {
-            throw DocxTemplateError.ioError("Failed to create temporary ZIP archive: \(error)")
+            throw DocxTemplateError.ioError("Failed to create in-memory ZIP archive: \(error)")
         }
 
         for path in entries.keys.sorted() {
@@ -94,9 +90,13 @@ public struct DocxArchive: Sendable {
                     type: .file,
                     uncompressedSize: Int64(payload.count),
                     provider: { position, size in
+                        let count = payload.count
+                        guard position >= 0, size >= 0 else { return Data() }
                         let start = Int(position)
-                        let end = min(start + size, payload.count)
-                        return payload.subdata(in: start..<end)
+                        guard start < count else { return Data() }
+                        let remaining = count - start
+                        let length = min(size, remaining)
+                        return payload.subdata(in: start..<(start + length))
                     }
                 )
             } catch {
@@ -104,10 +104,9 @@ public struct DocxArchive: Sendable {
             }
         }
 
-        do {
-            return try Data(contentsOf: tmp)
-        } catch {
-            throw DocxTemplateError.ioError("Failed to read serialized archive: \(error)")
+        guard let data = archive.data else {
+            throw DocxTemplateError.ioError("Failed to materialize in-memory archive")
         }
+        return data
     }
 }
