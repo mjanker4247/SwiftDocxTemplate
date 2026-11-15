@@ -62,7 +62,7 @@ enum RunNormalizer {
                 continue
             }
 
-            var lookAhead = index + 1
+            let lookAhead = index + 1
             while lookAhead < paragraph.children.count {
                 let next = paragraph.children[lookAhead]
                 guard isRun(next) else { break }
